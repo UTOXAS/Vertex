@@ -81,9 +81,7 @@ class Downloader:
         for stream in audio_streams:
             label = f"Audio: {stream.bitrate or 'Unknown'}kbps ({stream.ext})"
             options.append(
-                DownloadOption(
-                    label=label, audio_stream=WITHstream, output_format="mp3"
-                )
+                DownloadOption(label=label, audio_stream=stream, output_format="mp3")
             )
 
         return options

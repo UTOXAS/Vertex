@@ -15,12 +15,13 @@ Download with progress tracking (PENDING, DOWNLOADING, CONVERTING, MERGING, FINI
 Modern neobrutalist UI with light colors.
 Prerequisites
 Python 3.11
-ffmpeg installed and added to system PATH
+FFmpeg installed and added to system PATH (required for media processing)
+The ffmpeg-python library (automatically installed via requirements.txt)
 Windows 10 with PowerShell
 Installation
 Clone the repository: ```powershell git clone <repository-url> cd Vertex```
 Run the setup script to create a virtual environment and install dependencies: ```powershell .\setup.ps1```
-Ensure ffmpeg is installed: ```powershell choco install ffmpeg```
+Ensure FFmpeg is installed: ```powershell choco install ffmpeg```
 Usage
 Activate the virtual environment: ```powershell .\venv\Scripts\Activate.ps1```
 Run the application: ```powershell py -3.11 .\src\main.py```
