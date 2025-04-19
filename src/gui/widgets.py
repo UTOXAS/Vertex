@@ -102,15 +102,29 @@ class DownloadOptionsWidget(ctk.CTkFrame):
         self.options: List[DownloadOption] = []
         self.radio_buttons: List[ctk.CTkRadioButton] = []
 
+        # Create scrollable frame for radio buttons
+        self.scrollable_frame = ctk.CTkScrollableFrame(
+            self,
+            fg_color=styles["fg_color"],
+            border_color=styles["border_color"],
+            border_width=2,
+            height=150,  # Fixed height to limit vertical expansion
+            scrollbar_button_color=styles["accent_color"],
+            scrollbar_button_hover_color="#4682B4",
+        )
+        self.scrollable_frame.pack(pady=10, padx=20, fill="x")
+
     def display_options(self, options: List[DownloadOption]):
+        # Clear existing radio buttons
         for widget in self.radio_buttons:
             widget.destroy()
         self.radio_buttons.clear()
         self.options = options
 
+        # Create new radio buttons inside the scrollable frame
         for idx, option in enumerate(options):
             rb = ctk.CTkRadioButton(
-                self,
+                self.scrollable_frame,
                 text=option.label,
                 variable=self.option_var,
                 value=str(idx),
