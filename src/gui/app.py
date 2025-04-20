@@ -4,7 +4,6 @@ from typing import Optional
 from .styles import configure_theme, get_neobrutalist_styles
 from .widgets import (
     UrlInputWidget,
-    VideoInfoWidget,
     DownloadOptionsWidget,
     ProgressWidget,
 )
@@ -41,15 +40,11 @@ class VertexApp:
         self.url_input = UrlInputWidget(self.root, self._fetch_video_info, self.styles)
         self.url_input.pack(pady=10, padx=20, fill="x")
 
-        # Video Info
-        self.video_info = VideoInfoWidget(self.root, self.styles)
-        self.video_info.pack(pady=10, padx=20, fill="x")
-
         # Download Options
         self.download_options = DownloadOptionsWidget(
             self.root, self._on_option_selected, self.styles
         )
-        self.download_options.pack(pady=10, padx=20, fill="x")
+        self.download_options.pack(pady=10, padx=20, fill="both", expand=True)
 
         # Progress
         self.progress = ProgressWidget(self.root, self._start_download, self.styles)
@@ -66,16 +61,16 @@ class VertexApp:
 
     def _fetch_info_thread(self, url: str):
         try:
-            info = self.downloader.get_video_info(url)
-            self.root.after(0, lambda: self._display_info(info))
+            videos = self.downloader.get_video_info(url)
+            self.root.after(0, lambda: self._display_info(videos))
         except Exception as e:
             self.root.after(
                 0, lambda: self.progress.update_progress(DownloadState.FINISHED, 0)
             )
 
-    def _display_info(self, info: dict):
-        self.video_info.display_info(info["title"], info["thumbnail"])
-        self.download_options.display_options(info["options"])
+    def _display_info(self, videos: list):
+        options = [option for video in videos for option in video["options"]]
+        self.download_options.display_options(options)
 
     def _on_option_selected(self, option: DownloadOption):
         self.selected_option = option

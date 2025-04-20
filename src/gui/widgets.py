@@ -44,48 +44,6 @@ class UrlInputWidget(ctk.CTkFrame):
         return self.entry.get()
 
 
-class VideoInfoWidget(ctk.CTkFrame):
-    def __init__(self, master, styles: dict):
-        super().__init__(
-            master,
-            fg_color=styles["fg_color"],
-            border_color=styles["border_color"],
-            border_width=2,
-        )
-        self.styles = styles
-        self.thumbnail_label = None
-        self.title_label = None
-
-    def display_info(self, title: str, thumbnail_url: str):
-        if self.thumbnail_label:
-            self.thumbnail_label.destroy()
-        if self.title_label:
-            self.title_label.destroy()
-
-        try:
-            response = requests.get(thumbnail_url)
-            img_data = BytesIO(response.content)
-            img = Image.open(img_data).resize((200, 112), Image.LANCZOS)
-            photo = ImageTk.PhotoImage(img)
-
-            self.thumbnail_label = ctk.CTkLabel(self, image=photo, text="")
-            self.thumbnail_label.image = photo  # Keep reference
-            self.thumbnail_label.pack(pady=10)
-        except Exception:
-            self.thumbnail_label = ctk.CTkLabel(
-                self, text="No Thumbnail", font=self.styles["font_label"]
-            )
-            self.thumbnail_label.pack(pady=10)
-
-        self.title_label = ctk.CTkLabel(
-            self,
-            text=title,
-            font=self.styles["font_label"],
-            text_color=self.styles["text_color"],
-        )
-        self.title_label.pack(pady=5)
-
-
 class DownloadOptionsWidget(ctk.CTkFrame):
     def __init__(
         self, master, on_select: Callable[[DownloadOption], None], styles: dict
@@ -98,50 +56,131 @@ class DownloadOptionsWidget(ctk.CTkFrame):
         )
         self.styles = styles
         self.on_select = on_select
-        self.option_var = ctk.StringVar()
+        self.option_var = ctk.StringVar(value="-1")
         self.options: List[DownloadOption] = []
-        self.radio_buttons: List[ctk.CTkRadioButton] = []
+        self.option_frames: List[ctk.CTkFrame] = []
 
-        # Create scrollable frame for radio buttons
+        # Scrollable frame for options
         self.scrollable_frame = ctk.CTkScrollableFrame(
             self,
             fg_color=styles["fg_color"],
             border_color=styles["border_color"],
             border_width=2,
-            height=150,  # Fixed height to limit vertical expansion
             scrollbar_button_color=styles["accent_color"],
             scrollbar_button_hover_color="#4682B4",
         )
-        self.scrollable_frame.pack(pady=10, padx=20, fill="x")
+        self.scrollable_frame.pack(pady=10, padx=20, fill="both", expand=True)
 
     def display_options(self, options: List[DownloadOption]):
-        # Clear existing radio buttons
-        for widget in self.radio_buttons:
-            widget.destroy()
-        self.radio_buttons.clear()
+        # Clear existing options
+        for frame in self.option_frames:
+            frame.destroy()
+        self.option_frames.clear()
         self.options = options
+        self.option_var.set("-1")
 
-        # Create new radio buttons inside the scrollable frame
+        # Create newオプション frames
         for idx, option in enumerate(options):
-            rb = ctk.CTkRadioButton(
+            frame = ctk.CTkFrame(
                 self.scrollable_frame,
-                text=option.label,
+                fg_color=self.styles["fg_color"],
+                border_color=self.styles["border_color"],
+                border_width=1,
+            )
+            frame.pack(fill="x", padx=10, pady=5, anchor="n")
+
+            # Radio button
+            rb = ctk.CTkRadioButton(
+                frame,
+                text="",
                 variable=self.option_var,
                 value=str(idx),
-                font=self.styles["font_label"],
-                text_color=self.styles["text_color"],
                 command=lambda: self._on_option_selected(),
             )
-            rb.pack(anchor="w", padx=20, pady=5)
-            self.radio_buttons.append(rb)
+            rb.pack(side="left", padx=5)
+
+            # Thumbnail
+            try:
+                response = requests.get(option.thumbnail)
+                img_data = BytesIO(response.content)
+                img = Image.open(img_data).resize((100, 56), Image.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+                thumb_label = ctk.CTkLabel(frame, image=photo, text="")
+                thumb_label.image = photo  # Keep reference
+                thumb_label.pack(side="left", padx=5)
+            except Exception:
+                thumb_label = ctk.CTkLabel(
+                    frame, text="No Thumbnail", font=self.styles["font_label"]
+                )
+                thumb_label.pack(side="left", padx=5)
+
+            # Details frame
+            details = ctk.CTkFrame(frame, fg_color=self.styles["fg_color"])
+            details.pack(side="left", fill="x", expand=True)
+
+            # Title
+            title_label = ctk.CTkLabel(
+                details,
+                text=(
+                    option.title[:50] + "..."
+                    if len(option.title) > 50
+                    else option.title
+                ),
+                font=self.styles["font_label"],
+                text_color=self.styles["text_color"],
+            )
+            title_label.pack(anchor="w")
+
+            # Quality
+            quality_label = ctk.CTkLabel(
+                details,
+                text=option.label,
+                font=self.styles["font_label"],
+                text_color=self.styles["text_color"],
+            )
+            quality_label.pack(anchor="w")
+
+            # File Size
+            size_text = (
+                f"Size: {option.file_size // 1024 // 1024} MB"
+                if option.file_size
+                else "Size: Unknown"
+            )
+            size_label = ctk.CTkLabel(
+                details,
+                text=size_text,
+                font=self.styles["font_label"],
+                text_color=self.styles["text_color"],
+            )
+            size_label.pack(anchor="w")
+
+            # Processing Requirements
+            processing = []
+            if option.requires_conversion:
+                processing.append("CONVERTING")
+            if option.requires_merging:
+                processing.append("MERGING")
+            processing_text = (
+                f"Requires: {', '.join(processing) if processing else 'None'}"
+            )
+            processing_label = ctk.CTkLabel(
+                details,
+                text=processing_text,
+                font=self.styles["font_label"],
+                text_color=self.styles["text_color"],
+            )
+            processing_label.pack(anchor="w")
+
+            self.option_frames.append(frame)
 
         if options:
             self.option_var.set("0")
             self._on_option_selected()
 
     def _on_option_selected(self):
-        idx = int(self.option_var.get())
-        self.on_select(self.options[idx])
+        idx = int(self.option_var.get()) if self.option_var.get() != "-1" else -1
+        if idx >= 0:
+            self.on_select(self.options[idx])
 
 
 class ProgressWidget(ctk.CTkFrame):
@@ -163,7 +202,9 @@ class ProgressWidget(ctk.CTkFrame):
         )
         self.status_label.pack(pady=5)
 
-        self.progress_bar = ctk.CTkProgressBar(self, width=300)
+        self.progress_bar = ctk.CTkProgressBar(
+            self, width=300, progress_color=self.styles["accent_color"]
+        )
         self.progress_bar.set(0)
         self.progress_bar.pack(pady=5)
 
@@ -180,7 +221,7 @@ class ProgressWidget(ctk.CTkFrame):
 
     def update_progress(self, state: DownloadState, progress: float):
         self.status_label.configure(text=f"Status: {state.value}")
-        self.progress_bar.set(progress)
+        self.progress_bar.set(max(0.0, min(1.0, progress)))
 
     def reset(self):
         self.status_label.configure(text="Status: Idle")

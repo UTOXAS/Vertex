@@ -10,16 +10,42 @@ class Downloader:
         self.output_dir = "downloads"
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def get_video_info(self, url: str) -> dict:
-        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+    def get_video_info(self, url: str) -> List[dict]:
+        ydl_opts = {
+            "quiet": True,
+            "extract_flat": "in_playlist",  # Extract playlist entries without full details
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        title = info.get("title", "Unknown Title")
-        thumbnail = info.get("thumbnail", "")
-        streams = self._parse_streams(info)
-        options = self._create_download_options(streams)
+        videos = []
+        # Handle single video or playlist
+        entries = info.get("entries", [info]) if "entries" in info else [info]
 
-        return {"title": title, "thumbnail": thumbnail, "options": options}
+        for entry in entries:
+            video_id = entry.get("id", "unknown")
+            title = entry.get("title", "Unknown Title")
+            thumbnail = entry.get("thumbnail", "")
+
+            # Fetch detailed stream info for each video
+            stream_info = self._fetch_stream_info(entry.get("url", url))
+            streams = self._parse_streams(stream_info)
+            options = self._create_download_options(video_id, title, thumbnail, streams)
+
+            videos.append(
+                {
+                    "video_id": video_id,
+                    "title": title,
+                    "thumbnail": thumbnail,
+                    "options": options,
+                }
+            )
+
+        return videos
+
+    def _fetch_stream_info(self, url: str) -> dict:
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+            return ydl.extract_info(url, download=False)
 
     def _parse_streams(self, info: dict) -> List[StreamInfo]:
         streams = []
@@ -34,6 +60,7 @@ class Downloader:
             is_audio = fmt.get("vcodec") == "none"
             resolution = fmt.get("resolution") if not is_audio else None
             bitrate = fmt.get("abr") if is_audio else None
+            file_size = fmt.get("filesize") or fmt.get("filesize_approx")
 
             streams.append(
                 StreamInfo(
@@ -43,12 +70,13 @@ class Downloader:
                     resolution=resolution,
                     bitrate=str(bitrate) if bitrate else None,
                     is_audio=is_audio,
+                    file_size=file_size,
                 )
             )
         return streams
 
     def _create_download_options(
-        self, streams: List[StreamInfo]
+        self, video_id: str, title: str, thumbnail: str, streams: List[StreamInfo]
     ) -> List[DownloadOption]:
         options = []
 
@@ -56,9 +84,17 @@ class Downloader:
         for stream in streams:
             if not stream.is_audio and stream.ext in ["mp4", "webm"]:
                 label = f"Video+Audio: {stream.resolution or 'Unknown'} ({stream.ext})"
+                requires_conversion = stream.ext != "mp4"
                 options.append(
                     DownloadOption(
-                        label=label, video_stream=stream, output_format="mp4"
+                        label=label,
+                        video_id=video_id,
+                        title=title,
+                        thumbnail=thumbnail,
+                        file_size=stream.file_size,
+                        requires_conversion=requires_conversion,
+                        video_stream=stream,
+                        output_format="mp4",
                     )
                 )
 
@@ -68,9 +104,15 @@ class Downloader:
         for video in video_streams:
             for audio in audio_streams:
                 label = f"Video: {video.resolution or 'Unknown'} + Audio: {audio.bitrate or 'Unknown'}kbps"
+                total_size = (video.file_size or 0) + (audio.file_size or 0)
                 options.append(
                     DownloadOption(
                         label=label,
+                        video_id=video_id,
+                        title=title,
+                        thumbnail=thumbnail,
+                        file_size=total_size if total_size > 0 else None,
+                        requires_merging=True,
                         video_stream=video,
                         audio_stream=audio,
                         output_format="mp4",
@@ -80,8 +122,18 @@ class Downloader:
         # Audio Only
         for stream in audio_streams:
             label = f"Audio: {stream.bitrate or 'Unknown'}kbps ({stream.ext})"
+            requires_conversion = stream.ext != "mp3"
             options.append(
-                DownloadOption(label=label, audio_stream=stream, output_format="mp3")
+                DownloadOption(
+                    label=label,
+                    video_id=video_id,
+                    title=title,
+                    thumbnail=thumbnail,
+                    file_size=stream.file_size,
+                    requires_conversion=requires_conversion,
+                    audio_stream=stream,
+                    output_format="mp3",
+                )
             )
 
         return options
@@ -95,7 +147,7 @@ class Downloader:
 
         output_file = os.path.join(
             self.output_dir,
-            f"output_{option.label.replace(':', '_').replace(' ', '_')}.{option.output_format}",
+            f"{option.title[:50]}_{option.label.replace(':', '_').replace(' ', '_')}.{option.output_format}",
         )
 
         if option.video_stream and option.audio_stream:
@@ -137,8 +189,11 @@ class Downloader:
 
         def progress_hook(d):
             if d["status"] == "downloading":
-                progress = d.get("downloaded_bytes", 0) / d.get("total_bytes", 1)
-                progress_callback(DownloadState.DOWNLOADING, min(progress, 0.9))
+                total_bytes = d.get("total_bytes") or d.get("total_bytes_estimate", 1)
+                progress = d.get("downloaded_bytes", 0) / total_bytes
+                progress_callback(
+                    DownloadState.DOWNLOADING, min(progress * 0.8, 0.8)
+                )  # Reserve 20% for post-processing
 
         ydl_opts = {
             "format": stream.format_id,
@@ -159,7 +214,7 @@ class Downloader:
         output: str,
         progress_callback: Callable[[DownloadState, float], None],
     ):
-        progress_callback(DownloadState.MERGING, 0.9)
+        progress_callback(DownloadState.MERGING, 0.85)
         try:
             video_stream = ffmpeg.input(video_path)
             audio_stream = ffmpeg.input(audio_path)
@@ -183,7 +238,7 @@ class Downloader:
         output_path: str,
         progress_callback: Callable[[DownloadState, float], None],
     ):
-        progress_callback(DownloadState.CONVERTING, 0.95)
+        progress_callback(DownloadState.CONVERTING, 0.9)
         try:
             ffmpeg.input(input_path).output(
                 output_path,
@@ -202,7 +257,7 @@ class Downloader:
         output_path: str,
         progress_callback: Callable[[DownloadState, float], None],
     ):
-        progress_callback(DownloadState.CONVERTING, 0.95)
+        progress_callback(DownloadState.CONVERTING, 0.9)
         try:
             ffmpeg.input(input_path).output(
                 output_path, acodec="mp3", loglevel="quiet"
