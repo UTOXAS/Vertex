@@ -4,7 +4,6 @@ import requests
 from io import BytesIO
 from typing import Callable, List, Optional
 from vertex_downloader.models import DownloadOption, DownloadState
-import textwrap
 
 
 def format_size(bytes_size: Optional[int], downloaded: int = 0) -> str:
@@ -61,7 +60,7 @@ class UrlInputWidget(ctk.CTkFrame):
 
 class DownloadOptionsWidget(ctk.CTkFrame):
     def __init__(
-        self, master, on_select: Callable[[DownloadOption], None], styles: dict
+        self, master, on_download: Callable[[DownloadOption], None], styles: dict
     ):
         super().__init__(
             master,
@@ -70,7 +69,7 @@ class DownloadOptionsWidget(ctk.CTkFrame):
             border_width=2,
         )
         self.styles = styles
-        self.on_select = on_select
+        self.on_download = on_download
         self.options: List[DownloadOption] = []
         self.selected_frame: Optional[ctk.CTkFrame] = None
 
@@ -199,31 +198,31 @@ class DownloadOptionsWidget(ctk.CTkFrame):
             thumb_label.grid(row=0, column=0, padx=5, pady=5, sticky="nw")
             thumb_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
-        # Details frame (horizontal layout)
+        # Details frame (vertical layout)
         details = ctk.CTkFrame(frame, fg_color=self.styles["fg_color"])
         details.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
         details.bind("<Button-1>", lambda e: self._select_option(frame))
 
-        # Title (truncated to 20 chars)
-        title_text = textwrap.shorten(option.title, width=20, placeholder="...")
+        # Title
         title_label = ctk.CTkLabel(
             details,
-            text=title_text,
+            text=option.title,
             font=self.styles["font_label"],
             text_color=self.styles["text_color"],
+            anchor="w",
         )
-        title_label.pack(side="left", padx=5)
+        title_label.pack(fill="x", padx=5, pady=2)
         title_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
-        # Quality (truncated to 20 chars)
-        quality_text = textwrap.shorten(option.label, width=20, placeholder="...")
+        # Quality
         quality_label = ctk.CTkLabel(
             details,
-            text=quality_text,
+            text=option.label,
             font=self.styles["font_label"],
             text_color=self.styles["text_color"],
+            anchor="w",
         )
-        quality_label.pack(side="left", padx=5)
+        quality_label.pack(fill="x", padx=5, pady=2)
         quality_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
         # File Size
@@ -235,8 +234,9 @@ class DownloadOptionsWidget(ctk.CTkFrame):
             text=size_text,
             font=self.styles["font_label"],
             text_color=self.styles["text_color"],
+            anchor="w",
         )
-        size_label.pack(side="left", padx=5)
+        size_label.pack(fill="x", padx=5, pady=2)
         size_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
         # Processing Requirements
@@ -248,14 +248,15 @@ class DownloadOptionsWidget(ctk.CTkFrame):
         if processing:
             processing_label = ctk.CTkLabel(
                 details,
-                text="".join(processing),
+                text=", ".join(processing),
                 font=self.styles["font_label"],
                 text_color=self.styles["text_color"],
+                anchor="w",
             )
-            processing_label.pack(side="left", padx=5)
+            processing_label.pack(fill="x", padx=5, pady=2)
             processing_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
-        # Conversion Switch (for non-mp4 combined video or non-mp3 audio)
+        # Conversion Switch
         if option.requires_conversion:
             switch_label = "MP4" if option.video_stream else "MP3"
             switch = ctk.CTkSwitch(
@@ -274,8 +275,21 @@ class DownloadOptionsWidget(ctk.CTkFrame):
                 button_hover_color=self.styles["switch_hover_color"],
             )
             switch.select() if option.convert_to_standard else switch.deselect()
-            switch.pack(side="left", padx=5)
+            switch.pack(fill="x", padx=5, pady=2)
             switch.bind("<Button-1>", lambda e: self._select_option(frame))
+
+        # Download Button
+        download_button = ctk.CTkButton(
+            details,
+            text="Download",
+            command=lambda: self.on_download(option),
+            font=self.styles["font_button"],
+            fg_color=self.styles["accent_color"],
+            text_color=self.styles["text_color"],
+            hover_color="#4682B4",
+        )
+        download_button.pack(fill="x", padx=5, pady=5)
+        download_button.bind("<Button-1>", lambda e: self._select_option(frame))
 
         return frame
 
@@ -320,66 +334,6 @@ class DownloadOptionsWidget(ctk.CTkFrame):
             self.selected_frame.configure(fg_color=self.styles["fg_color"])
         self.selected_frame = frame
         frame.configure(fg_color=self.styles["highlight_color"])
-        idx = (
-            self.video_sound_option_frames.index(frame)
-            if frame in self.video_sound_option_frames
-            else len(self.video_sound_option_frames)
-            + self.audio_option_frames.index(frame)
-        )
-        self.on_select(self.options[idx])
-
-
-class ProgressWidget(ctk.CTkFrame):
-    def __init__(self, master, on_download: Callable[[], None], styles: dict):
-        super().__init__(
-            master,
-            fg_color=styles["fg_color"],
-            border_color=styles["border_color"],
-            border_width=2,
-        )
-        self.styles = styles
-        self.on_download = on_download
-
-        self.status_label = ctk.CTkLabel(
-            self,
-            text="Status: Idle",
-            font=styles["font_label"],
-            text_color=styles["text_color"],
-        )
-        self.status_label.pack(pady=5)
-
-        self.progress_label = ctk.CTkLabel(
-            self,
-            text="",
-            font=styles["font_label"],
-            text_color=styles["text_color"],
-        )
-        self.progress_label.pack(pady=5)
-
-        self.download_button = ctk.CTkButton(
-            self,
-            text="Download",
-            command=on_download,
-            font=styles["font_button"],
-            fg_color=styles["accent_color"],
-            text_color=styles["text_color"],
-            hover_color="#4682B4",
-        )
-        self.download_button.pack(pady=10)
-
-    def update_progress(
-        self,
-        state: DownloadState,
-        progress: float,
-        downloaded: int,
-        total: Optional[int],
-    ):
-        self.status_label.configure(text=f"Status: {state.value}")
-        self.progress_label.configure(text=format_size(total, downloaded))
-
-    def reset(self):
-        self.status_label.configure(text="Status: Idle")
-        self.progress_label.configure(text="")
 
 
 class DownloadsWidget(ctk.CTkFrame):

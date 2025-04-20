@@ -5,7 +5,6 @@ from .styles import configure_theme, get_neobrutalist_styles
 from .widgets import (
     UrlInputWidget,
     DownloadOptionsWidget,
-    ProgressWidget,
     DownloadsWidget,
 )
 from vertex_downloader.downloader import Downloader
@@ -41,13 +40,38 @@ class VertexApp:
         )
         title_label.pack(pady=20)
 
+        # Tabview for navigation
+        self.tabview = ctk.CTkTabview(
+            self.root,
+            fg_color=self.styles["fg_color"],
+            border_color=self.styles["border_color"],
+            border_width=2,
+            segmented_button_fg_color=self.styles["accent_color"],
+            segmented_button_selected_color=self.styles["highlight_color"],
+            segmented_button_selected_hover_color=self.styles["switch_hover_color"],
+            segmented_button_unselected_color=self.styles["fg_color"],
+            segmented_button_unselected_hover_color=self.styles["switch_color"],
+            text_color=self.styles["text_color"],
+        )
+        self.tabview.pack(pady=5, padx=20, fill="both", expand=True)
+
+        # Download Tab
+        self.download_tab = self.tabview.add("Download")
+        self.download_frame = ctk.CTkFrame(
+            self.download_tab,
+            fg_color=self.styles["fg_color"],
+        )
+        self.download_frame.pack(fill="both", expand=True)
+
         # URL Input
-        self.url_input = UrlInputWidget(self.root, self._fetch_video_info, self.styles)
+        self.url_input = UrlInputWidget(
+            self.download_frame, self._fetch_video_info, self.styles
+        )
         self.url_input.pack(pady=10, padx=20, fill="x")
 
         # Loading Indicator
         self.loading_label = ctk.CTkLabel(
-            self.root,
+            self.download_frame,
             text="",
             font=self.styles["font_label"],
             text_color=self.styles["text_color"],
@@ -56,17 +80,21 @@ class VertexApp:
 
         # Download Options
         self.download_options = DownloadOptionsWidget(
-            self.root, self._on_option_selected, self.styles
+            self.download_frame, self._start_download, self.styles
         )
         self.download_options.pack(pady=10, padx=20, fill="both", expand=True)
 
-        # Progress
-        self.progress = ProgressWidget(self.root, self._start_download, self.styles)
-        self.progress.pack(pady=10, padx=20, fill="x")
+        # Downloads Tab
+        self.downloads_tab = self.tabview.add("Active Downloads")
+        self.downloads_frame = ctk.CTkFrame(
+            self.downloads_tab,
+            fg_color=self.styles["fg_color"],
+        )
+        self.downloads_frame.pack(fill="both", expand=True)
 
         # Downloads List
         self.downloads_widget = DownloadsWidget(
-            self.root, self._cancel_download, self.styles
+            self.downloads_frame, self._cancel_download, self.styles
         )
         self.downloads_widget.pack(pady=10, padx=20, fill="both", expand=True)
 
@@ -75,7 +103,6 @@ class VertexApp:
             return
 
         self.loading_label.configure(text="Loading video info...")
-        self.progress.reset()
         threading.Thread(
             target=self._fetch_info_thread, args=(url,), daemon=True
         ).start()
@@ -94,28 +121,23 @@ class VertexApp:
         self.download_options.display_options(options)
 
     def _display_error(self):
-        self.progress.update_progress(DownloadState.FAILED, 0, 0, None)
         self.loading_label.configure(text="Failed to load video info")
 
-    def _on_option_selected(self, option: DownloadOption):
-        self.selected_option = option
-
-    def _start_download(self):
-        if not self.selected_option:
+    def _start_download(self, option: DownloadOption):
+        if not option:
             return
 
-        self.progress.reset()
         downloader = Downloader()
         download_id = self.download_id_counter
         self.download_id_counter += 1
 
         frame, status_label, progress_label = self.downloads_widget.add_download(
-            self.selected_option, download_id
+            option, download_id
         )
         download_thread = threading.Thread(
             target=self._download_thread,
             args=(
-                self.selected_option,
+                option,
                 downloader,
                 download_id,
                 status_label,
@@ -125,7 +147,7 @@ class VertexApp:
         )
         self.downloads.append(
             (
-                self.selected_option,
+                option,
                 downloader,
                 download_thread,
                 [frame, status_label, progress_label],
@@ -167,8 +189,6 @@ class VertexApp:
         total: Optional[int],
     ):
         self.downloads_widget.update_download(download_id, state, downloaded, total)
-        if download_id == self.download_id_counter - 1:
-            self.progress.update_progress(state, 0, downloaded, total)
 
     def _cancel_download(self, download_id: int):
         if download_id < len(self.downloads):
