@@ -8,8 +8,8 @@ from .widgets import (
     ProgressWidget,
     DownloadsWidget,
 )
-from backend.downloader import Downloader
-from backend.models import DownloadOption, DownloadState
+from vertex_downloader.downloader import Downloader
+from vertex_downloader.models import DownloadOption, DownloadState
 
 
 class VertexApp:

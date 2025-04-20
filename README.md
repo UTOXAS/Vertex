@@ -1,17 +1,16 @@
 # Vertex
 
-Vertex is a sleek, powerful, and intuitive Python-based GUI application for downloading videos and audio from URLs. It leverages yt-dlp for downloading and ffmpeg for processing, wrapped in a professional neobrutalist design with a light color palette.
+Vertex is a sleek, powerful, and intuitive Python-based GUI application for downloading videos and audio from URLs. It leverages the `vertex-downloader` library for downloading and processing, wrapped in a professional neobrutalist design with a light color palette.
 
 ```python
 import customtkinter
-import yt_dlp
-import ffmpeg
+from vertex_downloader.downloader import Downloader
 ```
 
 ## Features
 
 - Paste a URL to fetch video and audio stream information for single videos or playlists.
-- View a list of download options, each displaying:
+- View download options in two tabs: Video+Sound and Audio Only, with:
   - Video thumbnail
   - Video title
   - Quality (resolution or bitrate)
@@ -24,7 +23,6 @@ import ffmpeg
 
 - Python 3.11
 - FFmpeg installed and added to system PATH (required for media processing)
-- The ffmpeg-python library (automatically installed via requirements.txt)
 - Windows 10 with PowerShell
 
 ## Installation
@@ -48,6 +46,18 @@ import ffmpeg
    choco install ffmpeg
    ```
 
+4. Install the `vertex-downloader` library (if not using a local path):
+
+   ```powershell
+   pip install vertex-downloader
+   ```
+
+   Or, if using a local copy:
+
+   ```powershell
+   pip install -e ../vertex_downloader
+   ```
+
 ## Usage
 
 1. Activate the virtual environment:
@@ -62,7 +72,7 @@ import ffmpeg
    py -3.11 .\src\main.py
    ```
 
-3. Paste a video or playlist URL, select a download option, and start the download.
+3. Paste a video or playlist URL, select a download option from the Video+Sound or Audio Only tab, and start the download.
 
 ## Project Structure
 
@@ -71,7 +81,6 @@ Vertex/
 ├── assets/                   # Logo and static assets
 ├── src/                      # Source code
 │   ├── gui/                  # GUI components
-│   ├── backend/              # Backend logic
 │   └── main.py               # Application entry point
 ├── README.md                 # Documentation
 ├── requirements.txt          # Dependencies
