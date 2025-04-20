@@ -73,16 +73,16 @@ class DownloadOptionsWidget(ctk.CTkFrame):
         self.options: List[DownloadOption] = []
         self.selected_frame: Optional[ctk.CTkFrame] = None
 
-        # Video+Sound Options
-        self.video_label = ctk.CTkLabel(
+        # Combined Video+Audio Options
+        self.combined_label = ctk.CTkLabel(
             self,
-            text="Video + Sound Options",
+            text="Combined Video+Audio Options",
             font=styles["font_label"],
             text_color=styles["text_color"],
         )
-        self.video_label.pack(pady=5, anchor="w", padx=10)
+        self.combined_label.pack(pady=5, anchor="w", padx=10)
 
-        self.video_frame = ctk.CTkScrollableFrame(
+        self.combined_frame = ctk.CTkScrollableFrame(
             self,
             fg_color=styles["fg_color"],
             border_color=styles["border_color"],
@@ -90,9 +90,28 @@ class DownloadOptionsWidget(ctk.CTkFrame):
             scrollbar_button_color=styles["accent_color"],
             scrollbar_button_hover_color="#4682B4",
         )
-        self.video_frame.pack(pady=5, padx=20, fill="both", expand=True)
+        self.combined_frame.pack(pady=5, padx=20, fill="both", expand=True)
 
-        # Audio Options
+        # Merging Video+Audio Options
+        self.merging_label = ctk.CTkLabel(
+            self,
+            text="Video+Audio (Merging Required)",
+            font=styles["font_label"],
+            text_color=styles["text_color"],
+        )
+        self.merging_label.pack(pady=5, anchor="w", padx=10)
+
+        self.merging_frame = ctk.CTkScrollableFrame(
+            self,
+            fg_color=styles["fg_color"],
+            border_color=styles["border_color"],
+            border_width=2,
+            scrollbar_button_color=styles["accent_color"],
+            scrollbar_button_hover_color="#4682B4",
+        )
+        self.merging_frame.pack(pady=5, padx=20, fill="both", expand=True)
+
+        # Audio Only Options
         self.audio_label = ctk.CTkLabel(
             self,
             text="Audio Only Options",
@@ -111,45 +130,88 @@ class DownloadOptionsWidget(ctk.CTkFrame):
         )
         self.audio_frame.pack(pady=5, padx=20, fill="both", expand=True)
 
-        self.video_option_frames: List[ctk.CTkFrame] = []
+        self.combined_option_frames: List[ctk.CTkFrame] = []
+        self.merging_option_frames: List[ctk.CTkFrame] = []
         self.audio_option_frames: List[ctk.CTkFrame] = []
 
     def display_options(self, options: List[DownloadOption]):
         # Clear existing options
-        for frame in self.video_option_frames + self.audio_option_frames:
+        for frame in (
+            self.combined_option_frames
+            + self.merging_option_frames
+            + self.audio_option_frames
+        ):
             frame.destroy()
-        self.video_option_frames.clear()
+        self.combined_option_frames.clear()
+        self.merging_option_frames.clear()
         self.audio_option_frames.clear()
         self.options = options
         self.selected_frame = None
 
-        video_options = [opt for opt in options if opt.video_stream]
+        combined_options = [
+            opt
+            for opt in options
+            if opt.video_stream and not opt.audio_stream and not opt.requires_merging
+        ]
+        merging_options = [
+            opt
+            for opt in options
+            if opt.video_stream and opt.audio_stream and opt.requires_merging
+        ]
         audio_options = [
             opt for opt in options if opt.audio_stream and not opt.video_stream
         ]
 
-        # Display Video+Sound options
-        for idx, option in enumerate(video_options):
+        # Display Combined Video+Audio options
+        for idx, option in enumerate(combined_options):
             frame = self._create_option_frame(option, idx)
             frame.pack(fill="x", padx=10, pady=5, anchor="n")
-            self.video_option_frames.append(frame)
+            self.combined_option_frames.append(frame)
+
+        # Display Merging Video+Audio options
+        for idx, option in enumerate(merging_options):
+            frame = self._create_option_frame(option, len(combined_options) + idx)
+            frame.pack(fill="x", padx=10, pady=5, anchor="n")
+            self.merging_option_frames.append(frame)
 
         # Display Audio options
         for idx, option in enumerate(audio_options):
-            frame = self._create_option_frame(option, len(video_options) + idx)
+            frame = self._create_option_frame(
+                option, len(combined_options) + len(merging_options) + idx
+            )
             frame.pack(fill="x", padx=10, pady=5, anchor="n")
             self.audio_option_frames.append(frame)
 
         if options:
-            self._select_option(
-                self.video_option_frames[0]
-                if video_options
-                else self.audio_option_frames[0]
+            first_frame = (
+                self.combined_option_frames[0]
+                if combined_options
+                else (
+                    self.merging_option_frames[0]
+                    if merging_options
+                    else self.audio_option_frames[0]
+                )
             )
+            self._select_option(first_frame)
 
     def _create_option_frame(self, option: DownloadOption, idx: int) -> ctk.CTkFrame:
+        parent_frame = (
+            self.combined_frame
+            if option
+            in [
+                opt for opt in self.options if opt.video_stream and not opt.audio_stream
+            ]
+            else (
+                self.merging_frame
+                if option
+                in [
+                    opt for opt in self.options if opt.video_stream and opt.audio_stream
+                ]
+                else self.audio_frame
+            )
+        )
         frame = ctk.CTkFrame(
-            self.video_frame if option.video_stream else self.audio_frame,
+            parent_frame,
             fg_color=self.styles["fg_color"],
             border_color=self.styles["border_color"],
             border_width=2,
@@ -222,7 +284,7 @@ class DownloadOptionsWidget(ctk.CTkFrame):
 
         # Processing Requirements
         processing = []
-        if option.requires_conversion:
+        if option.requires_conversion and option.convert_to_standard:
             processing.append("CONVERTING")
         if option.requires_merging:
             processing.append("MERGING")
@@ -236,7 +298,74 @@ class DownloadOptionsWidget(ctk.CTkFrame):
             processing_label.pack(anchor="w")
             processing_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
+        # Conversion Switch (for non-mp4 combined video or non-mp3 audio)
+        if option.requires_conversion:
+            switch_label = "Convert to MP4" if option.video_stream else "Convert to MP3"
+            switch = ctk.CTkSwitch(
+                details,
+                text=switch_label,
+                font=self.styles["font_label"],
+                text_color=self.styles["text_color"],
+                onvalue=1,
+                offvalue=0,
+                command=lambda: self._toggle_conversion(option, switch.get()),
+                fg_color=self.styles["fg_color"],
+                progress_color=self.styles["switch_color"],
+                button_color=self.styles["switch_color"],
+                button_hover_color=self.styles["switch_hover_color"],
+            )
+            switch.select() if option.convert_to_standard else switch.deselect()
+            switch.pack(anchor="w", pady=5)
+            switch.bind("<Button-1>", lambda e: self._select_option(frame))
+
         return frame
+
+    def _toggle_conversion(self, option: DownloadOption, state: int):
+        option.convert_to_standard = bool(state)
+        option.output_format = (
+            "mp4"
+            if option.video_stream and option.convert_to_standard
+            else (
+                option.video_stream.ext
+                if option.video_stream
+                else (
+                    "mp3"
+                    if option.audio_stream and option.convert_to_standard
+                    else option.audio_stream.ext
+                )
+            )
+        )
+        # Refresh the frame to update processing requirements
+        idx = self.options.index(option)
+        old_frame = (
+            self.combined_option_frames[idx]
+            if idx < len(self.combined_option_frames)
+            else (
+                self.merging_option_frames[idx - len(self.combined_option_frames)]
+                if idx
+                < len(self.combined_option_frames) + len(self.merging_option_frames)
+                else self.audio_option_frames[
+                    idx
+                    - len(self.combined_option_frames)
+                    - len(self.merging_option_frames)
+                ]
+            )
+        )
+        old_frame.destroy()
+        new_frame = self._create_option_frame(option, idx)
+        new_frame.pack(fill="x", padx=10, pady=5, anchor="n")
+        if idx < len(self.combined_option_frames):
+            self.combined_option_frames[idx] = new_frame
+        elif idx < len(self.combined_option_frames) + len(self.merging_option_frames):
+            self.merging_option_frames[idx - len(self.combined_option_frames)] = (
+                new_frame
+            )
+        else:
+            self.audio_option_frames[
+                idx - len(self.combined_option_frames) - len(self.merging_option_frames)
+            ] = new_frame
+        if self.selected_frame == old_frame:
+            self._select_option(new_frame)
 
     def _select_option(self, frame: ctk.CTkFrame):
         if self.selected_frame:
@@ -244,10 +373,16 @@ class DownloadOptionsWidget(ctk.CTkFrame):
         self.selected_frame = frame
         frame.configure(fg_color=self.styles["highlight_color"])
         idx = (
-            self.video_option_frames.index(frame)
-            if frame in self.video_option_frames
-            else len([f for f in self.video_option_frames if f.winfo_exists()])
-            + self.audio_option_frames.index(frame)
+            self.combined_option_frames.index(frame)
+            if frame in self.combined_option_frames
+            else (
+                len(self.combined_option_frames)
+                + self.merging_option_frames.index(frame)
+                if frame in self.merging_option_frames
+                else len(self.combined_option_frames)
+                + len(self.merging_option_frames)
+                + self.audio_option_frames.index(frame)
+            )
         )
         self.on_select(self.options[idx])
 

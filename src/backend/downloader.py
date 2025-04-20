@@ -97,11 +97,12 @@ class Downloader:
     ) -> List[DownloadOption]:
         options = []
 
-        # Video + Audio (combined streams)
+        # Combined Video+Audio Streams
         for stream in streams:
             if not stream.is_audio and stream.ext in ["mp4", "webm"]:
-                label = f"Video+Audio: {stream.resolution or 'Unknown'} ({stream.ext})"
+                label = f"Combined: {stream.resolution or 'Unknown'} ({stream.ext})"
                 requires_conversion = stream.ext != "mp4"
+                output_format = "mp4" if requires_conversion else stream.ext
                 options.append(
                     DownloadOption(
                         label=label,
@@ -111,16 +112,17 @@ class Downloader:
                         file_size=stream.file_size,
                         requires_conversion=requires_conversion,
                         video_stream=stream,
-                        output_format="mp4",
+                        output_format=output_format,
+                        convert_to_standard=requires_conversion,
                     )
                 )
 
-        # Video + Audio (separate streams)
+        # Separate Video+Audio Streams (Requires Merging)
         video_streams = [s for s in streams if not s.is_audio]
         audio_streams = [s for s in streams if s.is_audio]
         for video in video_streams:
             for audio in audio_streams:
-                label = f"Video: {video.resolution or 'Unknown'} + Audio: {audio.bitrate or 'Unknown'}kbps"
+                label = f"Merge: Video {video.resolution or 'Unknown'} + Audio {audio.bitrate or 'Unknown'}kbps"
                 total_size = (video.file_size or 0) + (audio.file_size or 0)
                 options.append(
                     DownloadOption(
@@ -133,13 +135,15 @@ class Downloader:
                         video_stream=video,
                         audio_stream=audio,
                         output_format="mp4",
+                        convert_to_standard=True,
                     )
                 )
 
-        # Audio Only
+        # Audio-Only Streams
         for stream in audio_streams:
             label = f"Audio: {stream.bitrate or 'Unknown'}kbps ({stream.ext})"
             requires_conversion = stream.ext != "mp3"
+            output_format = "mp3" if requires_conversion else stream.ext
             options.append(
                 DownloadOption(
                     label=label,
@@ -149,7 +153,8 @@ class Downloader:
                     file_size=stream.file_size,
                     requires_conversion=requires_conversion,
                     audio_stream=stream,
-                    output_format="mp3",
+                    output_format=output_format,
+                    convert_to_standard=requires_conversion,
                 )
             )
 
@@ -175,6 +180,7 @@ class Downloader:
                 return
 
             if option.video_stream and option.audio_stream:
+                # Separate streams requiring merging
                 video_path = self._download_stream(
                     option.video_stream, "temp_video", progress_callback
                 )
@@ -199,6 +205,7 @@ class Downloader:
                     video_path, audio_path, output_file, progress_callback
                 )
             elif option.video_stream:
+                # Combined video+audio stream
                 self._download_stream(
                     option.video_stream, output_file, progress_callback
                 )
@@ -208,7 +215,7 @@ class Downloader:
                     progress_callback(DownloadState.CANCELED, 0, 0, option.file_size)
                     return
 
-                if option.video_stream.ext != "mp4":
+                if option.requires_conversion and option.convert_to_standard:
                     temp_output = output_file + ".mp4"
                     self._convert_to_mp4(output_file, temp_output, progress_callback)
                     if self._cancel:
@@ -222,6 +229,7 @@ class Downloader:
                         return
                     os.rename(temp_output, output_file)
             elif option.audio_stream:
+                # Audio-only stream
                 self._download_stream(
                     option.audio_stream, output_file, progress_callback
                 )
@@ -231,7 +239,7 @@ class Downloader:
                     progress_callback(DownloadState.CANCELED, 0, 0, option.file_size)
                     return
 
-                if option.output_format == "mp3" and option.audio_stream.ext != "mp3":
+                if option.requires_conversion and option.convert_to_standard:
                     temp_output = output_file + ".mp3"
                     self._convert_to_mp3(output_file, temp_output, progress_callback)
                     if self._cancel:

@@ -36,6 +36,7 @@ class DownloadOption:
     video_stream: Optional[StreamInfo] = None
     audio_stream: Optional[StreamInfo] = None
     output_format: str = "mp4"  # mp4 or mp3
+    convert_to_standard: bool = True  # Convert to mp4/mp3 if True
 
     @property
     def quality_key(self) -> tuple:

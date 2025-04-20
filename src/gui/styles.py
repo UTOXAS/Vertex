@@ -19,4 +19,6 @@ def get_neobrutalist_styles():
         "highlight_color": "#B0E0E6",  # Light blue for selected option
         "cancel_button_color": "#FF4500",  # Orange-red for cancel button
         "cancel_button_hover": "#CC3700",  # Darker orange-red
+        "switch_color": "#1E90FF",  # Bright blue for switch
+        "switch_hover_color": "#4682B4",  # Darker blue for switch hover
     }
