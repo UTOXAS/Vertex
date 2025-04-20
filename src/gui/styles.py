@@ -16,4 +16,7 @@ def get_neobrutalist_styles():
         "accent_color": "#1E90FF",  # Bright blue
         "text_color": "#333333",  # Dark gray
         "border_color": "#000000",  # Black for neobrutalist contrast
+        "highlight_color": "#B0E0E6",  # Light blue for selected option
+        "cancel_button_color": "#FF4500",  # Orange-red for cancel button
+        "cancel_button_hover": "#CC3700",  # Darker orange-red
     }

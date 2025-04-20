@@ -2,8 +2,22 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 import requests
 from io import BytesIO
-from typing import Callable, List
+from typing import Callable, List, Optional
 from backend.models import DownloadOption, DownloadState
+
+
+def format_size(bytes_size: Optional[int], downloaded: int = 0) -> str:
+    """Format size in kB or MB, showing downloaded/total if total is known."""
+    if bytes_size is None:
+        return f"Downloaded: {(downloaded / 1024):.1f} kB"
+
+    total_kb = bytes_size / 1024
+    downloaded_kb = downloaded / 1024
+    if total_kb > 1024:
+        return (
+            f"Downloaded: {(downloaded_kb / 1024):.1f} MB / {(total_kb / 1024):.1f} MB"
+        )
+    return f"Downloaded: {downloaded_kb:.1f} kB / {total_kb:.1f} kB"
 
 
 class UrlInputWidget(ctk.CTkFrame):
@@ -56,12 +70,19 @@ class DownloadOptionsWidget(ctk.CTkFrame):
         )
         self.styles = styles
         self.on_select = on_select
-        self.option_var = ctk.StringVar(value="-1")
         self.options: List[DownloadOption] = []
-        self.option_frames: List[ctk.CTkFrame] = []
+        self.selected_frame: Optional[ctk.CTkFrame] = None
 
-        # Scrollable frame for options
-        self.scrollable_frame = ctk.CTkScrollableFrame(
+        # Video+Sound Options
+        self.video_label = ctk.CTkLabel(
+            self,
+            text="Video + Sound Options",
+            font=styles["font_label"],
+            text_color=styles["text_color"],
+        )
+        self.video_label.pack(pady=5, anchor="w", padx=10)
+
+        self.video_frame = ctk.CTkScrollableFrame(
             self,
             fg_color=styles["fg_color"],
             border_color=styles["border_color"],
@@ -69,118 +90,166 @@ class DownloadOptionsWidget(ctk.CTkFrame):
             scrollbar_button_color=styles["accent_color"],
             scrollbar_button_hover_color="#4682B4",
         )
-        self.scrollable_frame.pack(pady=10, padx=20, fill="both", expand=True)
+        self.video_frame.pack(pady=5, padx=20, fill="both", expand=True)
+
+        # Audio Options
+        self.audio_label = ctk.CTkLabel(
+            self,
+            text="Audio Only Options",
+            font=styles["font_label"],
+            text_color=styles["text_color"],
+        )
+        self.audio_label.pack(pady=5, anchor="w", padx=10)
+
+        self.audio_frame = ctk.CTkScrollableFrame(
+            self,
+            fg_color=styles["fg_color"],
+            border_color=styles["border_color"],
+            border_width=2,
+            scrollbar_button_color=styles["accent_color"],
+            scrollbar_button_hover_color="#4682B4",
+        )
+        self.audio_frame.pack(pady=5, padx=20, fill="both", expand=True)
+
+        self.video_option_frames: List[ctk.CTkFrame] = []
+        self.audio_option_frames: List[ctk.CTkFrame] = []
 
     def display_options(self, options: List[DownloadOption]):
         # Clear existing options
-        for frame in self.option_frames:
+        for frame in self.video_option_frames + self.audio_option_frames:
             frame.destroy()
-        self.option_frames.clear()
+        self.video_option_frames.clear()
+        self.audio_option_frames.clear()
         self.options = options
-        self.option_var.set("-1")
+        self.selected_frame = None
 
-        # Create newオプション frames
-        for idx, option in enumerate(options):
-            frame = ctk.CTkFrame(
-                self.scrollable_frame,
-                fg_color=self.styles["fg_color"],
-                border_color=self.styles["border_color"],
-                border_width=1,
-            )
+        video_options = [opt for opt in options if opt.video_stream]
+        audio_options = [
+            opt for opt in options if opt.audio_stream and not opt.video_stream
+        ]
+
+        # Display Video+Sound options
+        for idx, option in enumerate(video_options):
+            frame = self._create_option_frame(option, idx)
             frame.pack(fill="x", padx=10, pady=5, anchor="n")
+            self.video_option_frames.append(frame)
 
-            # Radio button
-            rb = ctk.CTkRadioButton(
-                frame,
-                text="",
-                variable=self.option_var,
-                value=str(idx),
-                command=lambda: self._on_option_selected(),
+        # Display Audio options
+        for idx, option in enumerate(audio_options):
+            frame = self._create_option_frame(option, len(video_options) + idx)
+            frame.pack(fill="x", padx=10, pady=5, anchor="n")
+            self.audio_option_frames.append(frame)
+
+        if options:
+            self._select_option(
+                self.video_option_frames[0]
+                if video_options
+                else self.audio_option_frames[0]
             )
-            rb.pack(side="left", padx=5)
 
-            # Thumbnail
-            try:
-                response = requests.get(option.thumbnail)
-                img_data = BytesIO(response.content)
-                img = Image.open(img_data).resize((100, 56), Image.LANCZOS)
-                photo = ImageTk.PhotoImage(img)
-                thumb_label = ctk.CTkLabel(frame, image=photo, text="")
-                thumb_label.image = photo  # Keep reference
-                thumb_label.pack(side="left", padx=5)
-            except Exception:
-                thumb_label = ctk.CTkLabel(
-                    frame, text="No Thumbnail", font=self.styles["font_label"]
-                )
-                thumb_label.pack(side="left", padx=5)
+    def _create_option_frame(self, option: DownloadOption, idx: int) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(
+            self.video_frame if option.video_stream else self.audio_frame,
+            fg_color=self.styles["fg_color"],
+            border_color=self.styles["border_color"],
+            border_width=2,
+        )
+        frame.grid_columnconfigure(1, weight=1)
+        frame.bind("<Button-1>", lambda e: self._select_option(frame))
+        for child in frame.winfo_children():
+            child.bind("<Button-1>", lambda e: self._select_option(frame))
 
-            # Details frame
-            details = ctk.CTkFrame(frame, fg_color=self.styles["fg_color"])
-            details.pack(side="left", fill="x", expand=True)
-
-            # Title
-            title_label = ctk.CTkLabel(
-                details,
-                text=(
-                    option.title[:50] + "..."
-                    if len(option.title) > 50
-                    else option.title
-                ),
-                font=self.styles["font_label"],
-                text_color=self.styles["text_color"],
+        # Thumbnail
+        try:
+            response = requests.get(option.thumbnail)
+            img_data = BytesIO(response.content)
+            img = Image.open(img_data).resize((100, 56), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+            thumb_label = ctk.CTkLabel(frame, image=photo, text="")
+            thumb_label.image = photo
+            thumb_label.grid(row=0, column=0, padx=5, pady=5, sticky="nw")
+            thumb_label.bind("<Button-1>", lambda e: self._select_option(frame))
+        except Exception:
+            thumb_label = ctk.CTkLabel(
+                frame, text="No Thumbnail", font=self.styles["font_label"]
             )
-            title_label.pack(anchor="w")
+            thumb_label.grid(row=0, column=0, padx=5, pady=5, sticky="nw")
+            thumb_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
-            # Quality
-            quality_label = ctk.CTkLabel(
-                details,
-                text=option.label,
-                font=self.styles["font_label"],
-                text_color=self.styles["text_color"],
-            )
-            quality_label.pack(anchor="w")
+        # Details frame
+        details = ctk.CTkFrame(frame, fg_color=self.styles["fg_color"])
+        details.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+        details.bind("<Button-1>", lambda e: self._select_option(frame))
 
-            # File Size
-            size_text = (
-                f"Size: {option.file_size // 1024 // 1024} MB"
-                if option.file_size
-                else "Size: Unknown"
-            )
-            size_label = ctk.CTkLabel(
-                details,
-                text=size_text,
-                font=self.styles["font_label"],
-                text_color=self.styles["text_color"],
-            )
-            size_label.pack(anchor="w")
+        # Title
+        title_label = ctk.CTkLabel(
+            details,
+            text=(
+                option.title[:50] + "..." if len(option.title) > 50 else option.title
+            ),
+            font=self.styles["font_label"],
+            text_color=self.styles["text_color"],
+            wraplength=300,
+        )
+        title_label.pack(anchor="w")
+        title_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
-            # Processing Requirements
-            processing = []
-            if option.requires_conversion:
-                processing.append("CONVERTING")
-            if option.requires_merging:
-                processing.append("MERGING")
-            processing_text = (
-                f"Requires: {', '.join(processing) if processing else 'None'}"
-            )
+        # Quality
+        quality_label = ctk.CTkLabel(
+            details,
+            text=option.label,
+            font=self.styles["font_label"],
+            text_color=self.styles["text_color"],
+            wraplength=300,
+        )
+        quality_label.pack(anchor="w")
+        quality_label.bind("<Button-1>", lambda e: self._select_option(frame))
+
+        # File Size
+        size_text = (
+            f"Size: {option.file_size // 1024 // 1024} MB"
+            if option.file_size
+            else "Size: Unknown"
+        )
+        size_label = ctk.CTkLabel(
+            details,
+            text=size_text,
+            font=self.styles["font_label"],
+            text_color=self.styles["text_color"],
+        )
+        size_label.pack(anchor="w")
+        size_label.bind("<Button-1>", lambda e: self._select_option(frame))
+
+        # Processing Requirements
+        processing = []
+        if option.requires_conversion:
+            processing.append("CONVERTING")
+        if option.requires_merging:
+            processing.append("MERGING")
+        if processing:
             processing_label = ctk.CTkLabel(
                 details,
-                text=processing_text,
+                text=f"Requires: {', '.join(processing)}",
                 font=self.styles["font_label"],
                 text_color=self.styles["text_color"],
             )
             processing_label.pack(anchor="w")
+            processing_label.bind("<Button-1>", lambda e: self._select_option(frame))
 
-            self.option_frames.append(frame)
+        return frame
 
-        if options:
-            self.option_var.set("0")
-            self._on_option_selected()
-
-    def _on_option_selected(self):
-        idx = int(self.option_var.get()) if self.option_var.get() != "-1" else -1
-        if idx >= 0:
-            self.on_select(self.options[idx])
+    def _select_option(self, frame: ctk.CTkFrame):
+        if self.selected_frame:
+            self.selected_frame.configure(fg_color=self.styles["fg_color"])
+        self.selected_frame = frame
+        frame.configure(fg_color=self.styles["highlight_color"])
+        idx = (
+            self.video_option_frames.index(frame)
+            if frame in self.video_option_frames
+            else len([f for f in self.video_option_frames if f.winfo_exists()])
+            + self.audio_option_frames.index(frame)
+        )
+        self.on_select(self.options[idx])
 
 
 class ProgressWidget(ctk.CTkFrame):
@@ -202,11 +271,13 @@ class ProgressWidget(ctk.CTkFrame):
         )
         self.status_label.pack(pady=5)
 
-        self.progress_bar = ctk.CTkProgressBar(
-            self, width=300, progress_color=self.styles["accent_color"]
+        self.progress_label = ctk.CTkLabel(
+            self,
+            text="",
+            font=styles["font_label"],
+            text_color=styles["text_color"],
         )
-        self.progress_bar.set(0)
-        self.progress_bar.pack(pady=5)
+        self.progress_label.pack(pady=5)
 
         self.download_button = ctk.CTkButton(
             self,
@@ -219,10 +290,124 @@ class ProgressWidget(ctk.CTkFrame):
         )
         self.download_button.pack(pady=10)
 
-    def update_progress(self, state: DownloadState, progress: float):
+    def update_progress(
+        self,
+        state: DownloadState,
+        progress: float,
+        downloaded: int,
+        total: Optional[int],
+    ):
         self.status_label.configure(text=f"Status: {state.value}")
-        self.progress_bar.set(max(0.0, min(1.0, progress)))
+        self.progress_label.configure(text=format_size(total, downloaded))
 
     def reset(self):
         self.status_label.configure(text="Status: Idle")
-        self.progress_bar.set(0)
+        self.progress_label.configure(text="")
+
+
+class DownloadsWidget(ctk.CTkFrame):
+    def __init__(self, master, on_cancel: Callable[[int], None], styles: dict):
+        super().__init__(
+            master,
+            fg_color=styles["fg_color"],
+            border_color=styles["border_color"],
+            border_width=2,
+        )
+        self.styles = styles
+        self.on_cancel = on_cancel
+        self.download_frames: List[ctk.CTkFrame] = []
+
+        self.label = ctk.CTkLabel(
+            self,
+            text="Active Downloads",
+            font=styles["font_label"],
+            text_color=styles["text_color"],
+        )
+        self.label.pack(pady=5, anchor="w", padx=10)
+
+        self.scrollable_frame = ctk.CTkScrollableFrame(
+            self,
+            fg_color=styles["fg_color"],
+            border_color=styles["border_color"],
+            border_width=2,
+            scrollbar_button_color=styles["accent_color"],
+            scrollbar_button_hover_color="#4682B4",
+        )
+        self.scrollable_frame.pack(pady=5, padx=20, fill="both", expand=True)
+
+    def add_download(self, option: DownloadOption, download_id: int):
+        frame = ctk.CTkFrame(
+            self.scrollable_frame,
+            fg_color=self.styles["fg_color"],
+            border_color=self.styles["border_color"],
+            border_width=2,
+        )
+        frame.pack(fill="x", padx=10, pady=5, anchor="n")
+        frame.grid_columnconfigure(1, weight=1)
+        self.download_frames.append(frame)
+
+        # Title
+        title_label = ctk.CTkLabel(
+            frame,
+            text=(
+                option.title[:50] + "..." if len(option.title) > 50 else option.title
+            ),
+            font=self.styles["font_label"],
+            text_color=self.styles["text_color"],
+            wraplength=200,
+        )
+        title_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+
+        # Status
+        status_label = ctk.CTkLabel(
+            frame,
+            text="Status: Pending",
+            font=self.styles["font_label"],
+            text_color=self.styles["text_color"],
+        )
+        status_label.grid(row=1, column=0, padx=5, pady=5, sticky="w")
+
+        # Progress
+        progress_label = ctk.CTkLabel(
+            frame,
+            text="",
+            font=self.styles["font_label"],
+            text_color=self.styles["text_color"],
+        )
+        progress_label.grid(row=2, column=0, padx=5, pady=5, sticky="w")
+
+        # Cancel Button
+        cancel_button = ctk.CTkButton(
+            frame,
+            text="Cancel",
+            command=lambda: self.on_cancel(download_id),
+            font=self.styles["font_button"],
+            fg_color=self.styles["cancel_button_color"],
+            text_color=self.styles["text_color"],
+            hover_color=self.styles["cancel_button_hover"],
+            width=80,
+        )
+        cancel_button.grid(row=0, column=1, rowspan=3, padx=5, pady=5, sticky="e")
+
+        return frame, status_label, progress_label
+
+    def update_download(
+        self,
+        download_id: int,
+        state: DownloadState,
+        downloaded: int,
+        total: Optional[int],
+    ):
+        if download_id < len(self.download_frames):
+            frame = self.download_frames[download_id]
+            status_label = frame.winfo_children()[1]
+            progress_label = frame.winfo_children()[2]
+            status_label.configure(text=f"Status: {state.value}")
+            progress_label.configure(text=format_size(total, downloaded))
+            if state in [
+                DownloadState.FINISHED,
+                DownloadState.CANCELED,
+                DownloadState.FAILED,
+            ]:
+                cancel_button = frame.winfo_children()[3]
+                cancel_button.configure(state="disabled")
